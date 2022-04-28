@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.ClusterRoleBinding.name }}
+roleRef:
+  apiGroup: {{ .Values.ClusterRoleBinding.rfapiGroup }}
+  kind: ClusterRole
+  name: {{ .Values.ClusterRoleBinding.rfname }}
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.ServiceAccount.name }}
+  namespace: default

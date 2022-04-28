@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Values.DaemonSet.name }}
+  labels:
+    k8s-app: {{ .Values.DaemonSet.name }}
+spec:
+  selector:
+    matchLabels:
+      name: {{ .Values.DaemonSet.name }}
+  template:
+    metadata:
+      labels:
+        name: {{ .Values.DaemonSet.name }}
+    spec:
+      serviceAccountName: {{ .Values.ServiceAccount.name }}
+      automountServiceAccountToken: true
+      containers:
+      - image: {{ .Values.DaemonSet.repo }}
+        imagePullPolicy: {{ .Values.DaemonSet.pullPolicy }}
+        name: {{ .Values.DaemonSet.containername }}
+        volumeMounts:
+        - mountPath: /sync/hosts
+          name: sync-hosts
+        args: [bash, sync_ds.sh,]
+        env:
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: interval
+          value: {{ .Values.DaemonSet.syncinterval | quote }}
+      volumes:
+      - name: sync-hosts
+        hostPath:
+          path: /etc/hosts
+          type: File

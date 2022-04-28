@@ -1,0 +1,19 @@
+# Default values for itri.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+DaemonSet:
+  name: core-dns-sync-ds
+  repo: vincent5753/corednssync_ds
+  pullPolicy: IfNotPresent
+  containername: coredns-sync-ds-container
+  syncinterval: 30
+
+ClusterRoleBinding:
+  name: vp-rolebinding
+  rfapiGroup: rbac.authorization.k8s.io
+  rfkind: ClusterRole
+  rfname: cluster-admin
+
+ServiceAccount:
+  name: vp-sa
