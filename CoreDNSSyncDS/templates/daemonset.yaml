@@ -30,6 +30,8 @@ spec:
               fieldPath: spec.nodeName
         - name: interval
           value: {{ .Values.DaemonSet.syncinterval | quote }}
+        - name: ING_NAMESPACE
+          value: {{ .Values.DaemonSet.ING_NAMESPACE }}
       volumes:
       - name: sync-hosts
         hostPath:
