@@ -8,6 +8,7 @@ DaemonSet:
   pullPolicy: IfNotPresent
   containername: coredns-sync-ds-container
   syncinterval: 30
+#  ING_NAMESPACE: vp
 
 ClusterRoleBinding:
   name: vp-rolebinding
