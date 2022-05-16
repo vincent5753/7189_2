@@ -32,6 +32,8 @@ spec:
           value: {{ .Values.DaemonSet.syncinterval | quote }}
         - name: ING_NAMESPACE
           value: {{ .Values.DaemonSet.ING_NAMESPACE }}
+        - name: SVC_NAMESPACE
+          value: {{ .Values.DaemonSet.SVC_NAMESPACE }}
       volumes:
       - name: sync-hosts
         hostPath:

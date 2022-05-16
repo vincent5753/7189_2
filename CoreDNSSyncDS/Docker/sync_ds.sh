@@ -16,6 +16,13 @@ else
     echo "[INFO][INIT] Specifying Namespace of Ingress in $ING_NAMESPACE namespace."
 fi
 
+if [ -z "$SVC_NAMESPACE" ]
+then
+    echo "[INFO][INIT] SVC_NAMESPACE Variable not found, will fetch Services info from all namespace."
+else
+    echo "[INFO][INIT] Specifying Namespace of Services in $SVC_NAMESPACE namespace."
+fi
+
 
 # Get SA TOKEN
 TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
@@ -77,6 +84,11 @@ GetSvcCount (){
   curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -c '.items | length'
 }
 
+GetSvcCount_Spaced (){
+  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$SVC_NAMESPACE/services | jq -c '.items | length'
+}
+
+
 # CHK if Current Node is Master
 NodeCount=$(GetNodeCount)
 echo "[INIT][INFO] Find $NodeCount Nodes!"
@@ -110,24 +122,35 @@ Gen_YAML_JSON (){
   do
     current=$(($i - 1 ))
     # Get Ingress Host
-      if [ -z "$ING_NAMESPACE" ]
-      then
-        IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
-      else
-        IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/namespaces/$ING_NAMESPACE/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
-      fi
+    if [ -z "$ING_NAMESPACE" ]
+    then
+      IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
+    else
+      IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/namespaces/$ING_NAMESPACE/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
+    fi
+
     echo "[INFO][STATUS] IngHost: $IngHosts"
-    echo "        rewrite name $IngHosts $LBName.$LBNamespace.svc.cluster.local" >> YAML.Part2
+    YamlAppend="        rewrite name $IngHosts $LBName.$LBNamespace.svc.cluster.local"
+
+    if grep -q "$YamlAppend" "YAML.Part2"
+    then
+      echo "[INFO][CM] Got Same DNS Record, skipping..."
+    else
+      echo "[INFO][CM] Writing CM $IngHosts -> $LBName.$LBNamespace.svc.cluster.local"
+      echo "        rewrite name $IngHosts $LBName.$LBNamespace.svc.cluster.local" >> YAML.Part2
+    fi
   done
   cat YAML.Part1 YAML.Part2 YAML.Part3 > Apply.yaml
 
   echo ""
   echo "<<<<< YAML FILE>>>>>"
   cat Apply.yaml
+  echo "<<<<< YAML FILE>>>>>"
   echo ""
   echo "<<<<< JSON FILE>>>>>"
   yq -o=json Apply.yaml > Apply.json
   cat Apply.json
+  echo "<<<<< JSON FILE>>>>>"
 
   rm YAML.Part2
 }
@@ -137,7 +160,7 @@ Update_CM(){
 }
 
 Update_Hosts(){
-  cat /sync/hosts | grep -v "Domain Add by DS" > /sync/hosts.1
+  cat /sync/hosts | grep -v "#Domain Add" > /sync/hosts.1
   rm /sync/hosts.2
   for i in $(seq 1 $INGCount)
   do
@@ -149,8 +172,15 @@ Update_Hosts(){
       else
         IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/namespaces/$ING_NAMESPACE/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
       fi
-    echo "[INFO][STATUS] Redirecting $IngHosts to $LBIP, writing hosts..."
-    echo "$LBIP    $IngHosts    #Domain Add by DS" >> /sync/hosts.2
+
+      HostsAppend="$LBIP    $IngHosts    #Domain Added by DS"
+      if grep -q "$HostsAppend" "/sync/hosts.2"
+      then
+        echo "[INFO][Hosts] Got Same Hosts Record, skipping..."
+      else
+        echo "[INFO][Hosts] Redirecting $IngHosts to $LBIP, writing hosts..."
+        echo "$HostsAppend" >> /sync/hosts.2
+      fi
   done
   cat /sync/hosts.1 /sync/hosts.2 > /sync/hosts
 }
@@ -159,13 +189,28 @@ FindLB (){
   for i in $(seq 1 $SvcCount)
   do
     current=$(($i - 1 ))
-    # Get SvcName
-    SvcName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -r -c ".items["$current"].metadata.name")
-    # Get SvcNamespace
-    SvcNamespace=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -r -c ".items["$current"].metadata.namespace")
-    # Get SvcType
-    SvcType=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -c ".items["$current"].spec.type" | sed 's/"//g')
-    echo "[INFO][STATUS] SvcName:$SvcName   SvcNamespace:$SvcNamespace   SvcType:$SvcType"
+
+    if [ -z "$SVC_NAMESPACE" ]
+    then
+      # D4 Fetch from all namespace
+      # Get SvcName
+      SvcName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -r -c ".items["$current"].metadata.name")
+      # Get SvcNamespace
+      SvcNamespace=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -r -c ".items["$current"].metadata.namespace")
+      # Get SvcType
+      SvcType=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -c ".items["$current"].spec.type" | sed 's/"//g')
+      echo "[INFO][STATUS] SvcName:$SvcName   SvcNamespace:$SvcNamespace   SvcType:$SvcType"
+    else
+      # Fetch Service From Specific Namespace
+      # Get SvcName
+      SvcName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$SVC_NAMESPACE/services | jq -r -c ".items["$current"].metadata.name")
+      # Get SvcNamespace
+      SvcNamespace=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$SVC_NAMESPACE/services | jq -r -c ".items["$current"].metadata.namespace")
+      # Get SvcType
+      SvcType=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$SVC_NAMESPACE/services | jq -c ".items["$current"].spec.type" | sed 's/"//g')
+      echo "[INFO][STATUS] SvcName:$SvcName   SvcNamespace:$SvcNamespace   SvcType:$SvcType"
+    fi
+
     if [ "$SvcType" = "LoadBalancer" ]
     then
       LBName=$SvcName
@@ -191,7 +236,12 @@ do
 
   echo "<Debug> INGCount: $INGCount"
 
-  SvcCount=$(GetSvcCount)
+  if [ -z "$SVC_NAMESPACE" ]
+  then
+    SvcCount=$(GetSvcCount)
+  else
+    SvcCount=$(GetSvcCount_Spaced)
+  fi
 
   if [ "$INGCount" = "0" ]
   then

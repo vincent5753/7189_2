@@ -9,6 +9,7 @@ DaemonSet:
   containername: coredns-sync-ds-container
   syncinterval: 30
 #  ING_NAMESPACE: vp
+#  SVC_NAMESPACE: default
 
 ClusterRoleBinding:
   name: vp-rolebinding
