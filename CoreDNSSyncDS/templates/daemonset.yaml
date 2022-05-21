@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ .Values.DaemonSet.name }}
+  namespace: {{ .Release.Namespace }}
   labels:
     k8s-app: {{ .Values.DaemonSet.name }}
 spec:
