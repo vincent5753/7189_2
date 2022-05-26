@@ -69,23 +69,23 @@ cat <<EOL > YAML.Part3
 EOL
 
 GetNodeCount (){
-  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/nodes | jq -c '.items | length'
+  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/nodes | jq -c '.items | length'
 }
 
 GetINGCount (){
-  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/ingresses | jq -c '.items | length'
+  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/apis/networking.k8s.io/v1/ingresses | jq -c '.items | length'
 }
 
 GetINGCount_Spaced (){
-  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/namespaces/$ING_NAMESPACE/ingresses | jq -c '.items | length'
+  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/apis/networking.k8s.io/v1/namespaces/$ING_NAMESPACE/ingresses | jq -c '.items | length'
 }
 
 GetSvcCount (){
-  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -c '.items | length'
+  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -c '.items | length'
 }
 
 GetSvcCount_Spaced (){
-  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$SVC_NAMESPACE/services | jq -c '.items | length'
+  curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/namespaces/$SVC_NAMESPACE/services | jq -c '.items | length'
 }
 
 
@@ -97,11 +97,11 @@ for i in $(seq 1 $NodeCount)
 do
   current=$(($i - 1 ))
   # Get NodeName
-  NodeName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/nodes | jq -r -c ".items["$current"].metadata.name")
+  NodeName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/nodes | jq -r -c ".items["$current"].metadata.name")
   # Check if current node is Master
   if [ "$NodeName" = "$MY_NODE_NAME" ]
   then
-    result=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/nodes | jq -c ".items["$current"].metadata.labels.\"node-role.kubernetes.io/master\"")
+    result=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/nodes | jq -c ".items["$current"].metadata.labels.\"node-role.kubernetes.io/master\"")
     if [ "$result" != "null" ]
     then
       echo "[INIT][INFO] Running on Master Node!"
@@ -124,9 +124,9 @@ Gen_YAML_JSON (){
     # Get Ingress Host
     if [ -z "$ING_NAMESPACE" ]
     then
-      IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
+      IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/apis/networking.k8s.io/v1/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
     else
-      IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/namespaces/$ING_NAMESPACE/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
+      IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/apis/networking.k8s.io/v1/namespaces/$ING_NAMESPACE/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
     fi
 
     echo "[INFO][STATUS] IngHost: $IngHosts"
@@ -156,7 +156,7 @@ Gen_YAML_JSON (){
 }
 
 Update_CM(){
-  curl -X PATCH https://kubernetes:443/api/v1/namespaces/kube-system/configmaps/coredns  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/strategic-merge-patch+json" --data-binary @Apply.json --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  curl -X PATCH https://kubernetes.default.svc:443/api/v1/namespaces/kube-system/configmaps/coredns  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/strategic-merge-patch+json" --data-binary @Apply.json --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 }
 
 Update_Hosts(){
@@ -168,9 +168,9 @@ Update_Hosts(){
     # Get IngHost
       if [ -z "$ING_NAMESPACE" ]
       then
-        IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
+        IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/apis/networking.k8s.io/v1/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
       else
-        IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/apis/networking.k8s.io/v1/namespaces/$ING_NAMESPACE/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
+        IngHosts=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/apis/networking.k8s.io/v1/namespaces/$ING_NAMESPACE/ingresses | jq -c ".items["$current"].spec.rules[0].host" | sed 's/"//g')
       fi
 
       HostsAppend="$LBIP    $IngHosts    #Domain Added by DS"
@@ -194,20 +194,20 @@ FindLB (){
     then
       # D4 Fetch from all namespace
       # Get SvcName
-      SvcName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -r -c ".items["$current"].metadata.name")
+      SvcName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -r -c ".items["$current"].metadata.name")
       # Get SvcNamespace
-      SvcNamespace=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -r -c ".items["$current"].metadata.namespace")
+      SvcNamespace=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -r -c ".items["$current"].metadata.namespace")
       # Get SvcType
-      SvcType=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -c ".items["$current"].spec.type" | sed 's/"//g')
+      SvcType=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -c ".items["$current"].spec.type" | sed 's/"//g')
       echo "[INFO][STATUS] SvcName:$SvcName   SvcNamespace:$SvcNamespace   SvcType:$SvcType"
     else
       # Fetch Service From Specific Namespace
       # Get SvcName
-      SvcName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$SVC_NAMESPACE/services | jq -r -c ".items["$current"].metadata.name")
+      SvcName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/namespaces/$SVC_NAMESPACE/services | jq -r -c ".items["$current"].metadata.name")
       # Get SvcNamespace
-      SvcNamespace=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$SVC_NAMESPACE/services | jq -r -c ".items["$current"].metadata.namespace")
+      SvcNamespace=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/namespaces/$SVC_NAMESPACE/services | jq -r -c ".items["$current"].metadata.namespace")
       # Get SvcType
-      SvcType=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/namespaces/$SVC_NAMESPACE/services | jq -c ".items["$current"].spec.type" | sed 's/"//g')
+      SvcType=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/namespaces/$SVC_NAMESPACE/services | jq -c ".items["$current"].spec.type" | sed 's/"//g')
       echo "[INFO][STATUS] SvcName:$SvcName   SvcNamespace:$SvcNamespace   SvcType:$SvcType"
     fi
 
@@ -215,7 +215,7 @@ FindLB (){
     then
       LBName=$SvcName
       LBNamespace=$SvcNamespace
-      LBIP=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes/api/v1/services | jq -c ".items["$current"].spec.loadBalancerIP" | sed 's/"//g')
+      LBIP=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -c ".items["$current"].spec.loadBalancerIP" | sed 's/"//g')
       echo "[INFO][STATUS] Found LB at $LBIP !"
     else
       :
