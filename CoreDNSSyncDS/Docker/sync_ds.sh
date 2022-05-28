@@ -143,14 +143,14 @@ Gen_YAML_JSON (){
   cat YAML.Part1 YAML.Part2 YAML.Part3 > Apply.yaml
 
   echo ""
-  echo "<<<<< YAML FILE>>>>>"
+  echo "<<<<< Start of YAML File >>>>>"
   cat Apply.yaml
-  echo "<<<<< YAML FILE>>>>>"
+  echo "<<<<< End of YAML File >>>>>"
   echo ""
-  echo "<<<<< JSON FILE>>>>>"
+  echo "<<<<< Start JSON File >>>>>"
   yq -o=json Apply.yaml > Apply.json
   cat Apply.json
-  echo "<<<<< JSON FILE>>>>>"
+  echo "<<<<< End of JSON File >>>>>"
 
   rm YAML.Part2
 }
@@ -190,8 +190,6 @@ FindLB (){
   do
     current=$(($i - 1 ))
 
-    if [ -z "$SVC_NAMESPACE" ]
-    then
       # D4 Fetch from all namespace
       # Get SvcName
       SvcName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -r -c ".items["$current"].metadata.name")
@@ -200,26 +198,33 @@ FindLB (){
       # Get SvcType
       SvcType=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -c ".items["$current"].spec.type" | sed 's/"//g')
       echo "[INFO][STATUS] SvcName:$SvcName   SvcNamespace:$SvcNamespace   SvcType:$SvcType"
-    else
-      # Fetch Service From Specific Namespace
-      # Get SvcName
-      SvcName=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/namespaces/$SVC_NAMESPACE/services | jq -r -c ".items["$current"].metadata.name")
-      # Get SvcNamespace
-      SvcNamespace=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/namespaces/$SVC_NAMESPACE/services | jq -r -c ".items["$current"].metadata.namespace")
-      # Get SvcType
-      SvcType=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/namespaces/$SVC_NAMESPACE/services | jq -c ".items["$current"].spec.type" | sed 's/"//g')
-      echo "[INFO][STATUS] SvcName:$SvcName   SvcNamespace:$SvcNamespace   SvcType:$SvcType"
-    fi
 
-    if [ "$SvcType" = "LoadBalancer" ]
+    if [ -z "$SVC_NAMESPACE" ]
     then
-      LBName=$SvcName
-      LBNamespace=$SvcNamespace
-      LBIP=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -c ".items["$current"].spec.loadBalancerIP" | sed 's/"//g')
-      echo "[INFO][STATUS] Found LB at $LBIP !"
-    else
-      :
-    fi
+      if [ "$SvcType" = "LoadBalancer" ]
+      then
+        LBName=$SvcName
+        LBNamespace=$SvcNamespace
+        LBIP=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -c ".items["$current"].spec.loadBalancerIP" | sed 's/"//g')
+        echo "[INFO][STATUS] Found LB $LBName at $LBIP in $LBNamespace namespace !"
+      else
+        :
+      fi
+   else
+      if [ "$SvcType" = "LoadBalancer" ]
+      then
+        LBName=$SvcName
+        LBNamespace=$SvcNamespace
+        if [ "$SVC_NAMESPACE" = "$SvcNamespace"]
+        then
+          LBIP=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -c ".items["$current"].spec.loadBalancerIP" | sed 's/"//g')
+          echo "[INFO][STATUS] Found LB $LBName at $LBIP in $LBNamespace namespace !"
+        fi
+      else
+        :
+      fi
+   fi
+
   done
 }
 
@@ -234,7 +239,7 @@ do
     INGCount=$(GetINGCount_Spaced)
   fi
 
-  echo "<Debug> INGCount: $INGCount"
+  #echo "<Debug> INGCount: $INGCount"
 
   if [ -z "$SVC_NAMESPACE" ]
   then
