@@ -217,7 +217,7 @@ FindLB (){
         LBNamespace=$SvcNamespace
         if [ "$SVC_NAMESPACE" = "$SvcNamespace"]
         then
-          LBIP=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -c ".items["$current"].spec.loadBalancerIP" | sed 's/"//g')
+          LBIP=$(curl -s --insecure -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/services | jq -c ".items[0].status.loadBalancer.ingress[0].ip" | sed 's/"//g')
           echo "[INFO][STATUS] Found LB $LBName at $LBIP in $LBNamespace namespace !"
         fi
       else
