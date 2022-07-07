@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: statistics
+  labels:
+    k8s-app: statistics
+spec:
+  serviceAccountName: statistics-sa
+  automountServiceAccountToken: true
+  containers:
+  - image: vincent5753/k8s-statistics
+    imagePullPolicy: Always
+    name: statistics-pod-container
+    args: [python, statistics.py]
+    env:
+    - name: mode
+      value: "pod"
