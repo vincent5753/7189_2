@@ -52,7 +52,6 @@ def get_node_statistics():
     print("")
 
 def get_pod_statistics():
-    print("pod")
 
     with open("excludeapp.list", "r") as f:
         excludeapp = f.read().splitlines()
@@ -81,14 +80,14 @@ def get_pod_statistics():
     for pod in ret.items:
         if pod.metadata.labels.get('app'):
             if pod.metadata.labels.get('app') in excludeapp:
-                break
+                continue
         print(str(pod.status.pod_ip)+" " + str(pod.metadata.namespace) + " " +str(pod.metadata.name) + " " + bcolors.OKBLUE + str(pod.metadata.labels) + bcolors.ENDC)
         print(str(pod.metadata.name))
         print(str(pod.spec.containers[0].resources.requests))
 
         if pod.spec.containers[0].resources.requests is None:
             print(bcolors.FAIL +"None" + bcolors.ENDC)
-            break
+            continue
         else:
             print(bcolors.OKGREEN + str(pod.spec.containers[0].resources.requests) + bcolors.ENDC)
             if "cpu" in pod.spec.containers[0].resources.requests:
