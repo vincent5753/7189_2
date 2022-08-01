@@ -1,6 +1,7 @@
 import os
 import time
 import re
+import json
 from kubernetes import client, config
 
 mode = os.environ.get("mode", "node")
@@ -75,8 +76,6 @@ def get_pod_statistics():
     ret = v1.list_pod_for_all_namespaces(watch=False)
 
     company_dict = dict()
-    cpusum = 0
-    memsum = 0
     gpusum = 0
 
     print("<RAW POD INFO>")
@@ -91,9 +90,11 @@ def get_pod_statistics():
                 print(str(pod.status.pod_ip) + " " + str(pod.metadata.namespace) + " " + str(pod.metadata.name) + " " + bcolors.OKBLUE + str(pod.metadata.labels) + bcolors.ENDC)
                 print("<Requested Resource>")
                 print(bcolors.OKGREEN + str(pod.spec.containers[0].resources.requests) + bcolors.ENDC)
+                # 因為CPU通常是最先需要處理的，所以優先判斷不存在
                 if "cpu" in pod.spec.containers[0].resources.requests:
                     company_id = pod.metadata.labels.get('company_id')
                     project_id = pod.metadata.labels.get('project_id')
+                    pod_name = str(pod.metadata.name)
                     if not company_id:
                         continue
                     if not project_id:
@@ -102,35 +103,157 @@ def get_pod_statistics():
 
                     regex = r"^\d*$"
                     if re.match(regex, cpuusage):
-                        cpuusum = cpusum + int(cpuusage)*1000
                         if company_id in company_dict.keys():
-                            if project_id in company_dict[company_id].keys():
-                                company_dict[company_id][project_id]["cpu"] = company_dict[company_id][project_id].get("cpu", 0) + int(cpuusage)*1000
-                                company_dict[company_id][project_id].get("cpu")
+                            # company -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id].keys():
+                                print("DeBug108: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                                company_dict[company_id]["sum"]["cpu"] = company_dict[company_id]["sum"].get("cpu", 0) + int(cpuusage)*1000
+                                print("DeBug110: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
                             else:
-                                company_dict[company_id][project_id] = {}
-                                company_dict[company_id][project_id]["cpu"] = company_dict[company_id][project_id].get("cpu", 0) + int(cpuusage)*1000
-                                company_dict[company_id][project_id].get("cpu")
+                                company_dict[company_id]["sum"] = dict()
+                                print("DeBug113: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                                company_dict[company_id]["sum"]["cpu"] = company_dict[company_id]["sum"].get("cpu", 0) + int(cpuusage)*1000
+                                print("DeBug115: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                            if project_id in company_dict[company_id].keys():
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug119: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                                    company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage)*1000
+                                    print("DeBug121: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    print("DeBug124: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                                    company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage)*1000
+                                    print("DeBug126: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                                # company -> project -> 不同pod
+                                # 因為CPU通常是最先需要處理的，所以優先判斷不存在，所以以not為優先判斷
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage)*1000
+                                    company_dict[company_id][project_id][pod_name].get("cpu")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage)*1000
+                                    company_dict[company_id][project_id][pod_name].get("cpu")
+                            else:
+                                # 建立 project 所使用字典
+                                company_dict[company_id][project_id] = dict()
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug141: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                    company_dict[company_id][project_id]["sum"] = company_dict[company_id][project_id].get("sum", 0) + int(cpuusage)*1000
+                                    print("DeBug143: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    print("DeBug146: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                    company_dict[company_id][project_id]["sum"] = company_dict[company_id][project_id].get("sum", 0) + int(cpuusage)*1000
+                                    print("DeBug148: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                # company -> project -> 不同pod
+                                # 因為CPU通常是最先需要處理的，所以優先判斷不存在，所以以not為優先判斷
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage)*1000
+                                    company_dict[company_id][project_id][pod_name].get("cpu")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage)*1000
+                                    company_dict[company_id][project_id][pod_name].get("cpu")
                         else:
-                            company_dict[company_id] = {}
-                            company_dict[company_id][project_id] = {}
-                            company_dict[company_id][project_id]["cpu"] = company_dict[company_id][project_id].get("cpu", 0) + int(cpuusage)*1000
+                            company_dict[company_id] = dict()
+                            company_dict[company_id]["sum"] = dict()
+                            company_dict[company_id][project_id] = dict()
+                            company_dict[company_id][project_id]["sum"] = dict()
+                            # company -> sum
+                            print("DeBug164: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                            company_dict[company_id]["sum"]["cpu"] = company_dict[company_id]["sum"].get("cpu", 0) + int(cpuusage)*1000
+                            print("DeBug166: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                            # company -> project -> sum
+                            company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage)*1000
+                            # company -> project -> 不同pod
+                            # 因為CPU通常是最先需要處理的，所以優先判斷不存在，所以以not為優先判斷(效能稍微++)
+                            if pod_name not in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage)*1000
+                                company_dict[company_id][project_id][pod_name].get("cpu")
+                            else:
+                                company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage)*1000
+                                company_dict[company_id][project_id][pod_name].get("cpu")
 
                     regex = r"^\d*m$"
                     if re.match(regex, cpuusage):
-                        cpusum = cpusum + int(cpuusage.replace('m', ''))
                         if company_id in company_dict.keys():
-                            if project_id in company_dict[company_id].keys():
-                                company_dict[company_id][project_id]["cpu"] = company_dict[company_id][project_id].get("cpu", 0) + int(cpuusage.replace('m', ''))
-                                company_dict[company_id][project_id].get("cpu", 0)
+                            # company -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id].keys():
+                                print("DeBug184: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                                company_dict[company_id]["sum"]["cpu"] = company_dict[company_id]["sum"].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                print("DeBug186: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
                             else:
-                                company_dict[company_id][project_id] = {}
-                                company_dict[company_id][project_id]["cpu"] = company_dict[company_id][project_id].get("cpu", 0) + int(cpuusage.replace('m', ''))
-                                company_dict[company_id][project_id].get("cpu")
+                                company_dict[company_id]["sum"] = dict()
+                                # print("DeBug189: sum B4 summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                                # print(company_id, company_dict[company_id]["sum"].get("cpu", 0), int(cpuusage.replace('m', '')))
+                                company_dict[company_id]["sum"]["cpu"] = company_dict[company_id]["sum"].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                print("DeBug191: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                            if project_id in company_dict[company_id].keys():
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug195: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                    company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                    print("DeBug197: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    # print("DeBug200: sum B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                    company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                    print("DeBug202: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                # company -> project -> 不同pod
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                    company_dict[company_id][project_id][pod_name].get("cpu")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                    company_dict[company_id][project_id][pod_name].get("cpu")
+                            else:
+                                # 建立 project 所使用字典
+                                company_dict[company_id][project_id] = dict()
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug216: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                    company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                    print("DeBug218: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    # print("DeBug221: sum B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                    company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                    print("DeBug223: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                                # company -> project -> 不同pod
+                                # 因為CPU通常是最先需要處理的，所以優先判斷不存在，所以以not為優先判斷
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                    company_dict[company_id][project_id][pod_name].get("cpu")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                    company_dict[company_id][project_id][pod_name].get("cpu")
                         else:
-                            company_dict[company_id] = {}
-                            company_dict[company_id][project_id] = {}
-                            company_dict[company_id][project_id]["cpu"] = company_dict[company_id][project_id].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                            company_dict[company_id] = dict()
+                            company_dict[company_id]["sum"] = dict()
+                            company_dict[company_id][project_id] = dict()
+                            company_dict[company_id][project_id]["sum"] = dict()
+                            # company -> sum (確保sum會在每隻project下的第1位)
+                            # print("DeBug239: sum B4 summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                            company_dict[company_id]["sum"]["cpu"] = company_dict[company_id]["sum"].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                            print("DeBug242: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["cpu"]))
+                            # company -> project -> sum (確保sum會在每隻project下的第1位)
+                            # print("DeBug243: sum B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                            company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                            print("DeBug246: sum[company_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["cpu"]))
+                            # company -> project -> 不同pod
+                            # 因為CPU通常是最先需要處理的，所以優先判斷不存在，所以以not為優先判斷(效能稍微++)
+                            if pod_name not in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                company_dict[company_id][project_id][pod_name].get("cpu")
+                            else:
+                                company_dict[company_id][project_id][pod_name]["cpu"] = company_dict[company_id][project_id][pod_name].get("cpu", 0) + int(cpuusage.replace('m', ''))
+                                company_dict[company_id][project_id][pod_name].get("cpu")
 
                 if "memory" in pod.spec.containers[0].resources.requests:
                     company_id = pod.metadata.labels.get('company_id')
@@ -144,168 +267,500 @@ def get_pod_statistics():
 
                     regex = r"^\d*$"
                     if re.match(regex, memusage):
-                        memsum = memsum + int(memusage)
                         if company_id in company_dict.keys():
-                            if project_id in company_dict[company_id].keys():
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage)
-                                company_dict[company_id][project_id].get("mem", 0)
+                            # company -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id].keys():
+                                # print("DeBug184: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage)
+                                print("DeBug186: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
                             else:
-                                company_dict[company_id][project_id] = {}
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage)
-                                company_dict[company_id][project_id].get("mem", 0)
+                                company_dict[company_id]["sum"] = dict()
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage)
+                                print("DeBug191: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            if project_id in company_dict[company_id].keys():
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    # print("DeBug195: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage)
+                                    print("DeBug197: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage)
+                                    print("DeBug202: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage)
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage)
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                # 建立 project 所使用字典
+                                company_dict[company_id][project_id] = dict()
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug216: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage)
+                                    print("DeBug218: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage)
+                                    print("DeBug223: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage)
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage)
+                                    company_dict[company_id][project_id][pod_name].get("mem")
                         else:
-                            company_dict[company_id] = {}
-                            company_dict[company_id][project_id] = {}
-                            company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage)
-                            company_dict[company_id][project_id].get("mem", 0)
+                            company_dict[company_id] = dict()
+                            company_dict[company_id]["sum"] = dict()
+                            company_dict[company_id][project_id] = dict()
+                            company_dict[company_id][project_id]["sum"] = dict()
+                            company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage)
+                            print("DeBug242: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            # company -> project -> sum (確保sum會在每隻project下的第1位)
+                            company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage)
+                            print("DeBug246: sum[company_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                            # company -> project -> 不同pod
+                            if pod_name in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage)
+                                company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage)
+                                company_dict[company_id][project_id][pod_name].get("mem")
 
                     regex = r"^\d+e\d*$"
+                    # int(str(str(num) + str(0)*int(enum)))
                     if re.match(regex, memusage):
                         num = (memusage.split("e")[0])
                         enum = (memusage.split("e")[1])
-                        memsum = memsum + int(str(str(num) + str(0)*int(enum)))
+                        # memsum = memsum + int(str(str(num) + str(0)*int(enum)))
+
                         if company_id in company_dict.keys():
-                            if project_id in company_dict[company_id].keys():
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
-                                company_dict[company_id][project_id].get("mem", 0)
+                            # company -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id].keys():
+                                # print("DeBug184: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                print("DeBug186: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
                             else:
-                                company_dict[company_id][project_id] = {}
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
-                                company_dict[company_id][project_id].get("mem", 0)
+                                company_dict[company_id]["sum"] = dict()
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                print("DeBug191: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            if project_id in company_dict[company_id].keys():
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    # print("DeBug195: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                    print("DeBug197: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                    print("DeBug202: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                # 建立 project 所使用字典
+                                company_dict[company_id][project_id] = dict()
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug216: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                    print("DeBug218: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                    print("DeBug223: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                    company_dict[company_id][project_id][pod_name].get("mem")
                         else:
-                            company_dict[company_id] = {}
-                            company_dict[company_id][project_id] = {}
-                            company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
-                            company_dict[company_id][project_id].get("mem", 0)
+                            company_dict[company_id] = dict()
+                            company_dict[company_id]["sum"] = dict()
+                            company_dict[company_id][project_id] = dict()
+                            company_dict[company_id][project_id]["sum"] = dict()
+                            company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                            print("DeBug242: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            # company -> project -> sum (確保sum會在每隻project下的第1位)
+                            company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                            print("DeBug246: sum[company_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                            # company -> project -> 不同pod
+                            if pod_name in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(str(str(num) + str(0)*int(enum)))
+                                company_dict[company_id][project_id][pod_name].get("mem")
 
                     regex = r"^\d*M$"
+                    # int(memusage.replace('M', ''))*1000*1000
                     if re.match(regex, memusage):
-                        memsum = memsum + int(memusage.replace('M', ''))*1000*1000
+                        # memsum = memsum + int(memusage.replace('M', ''))*1000*1000
                         if company_id in company_dict.keys():
-                            if project_id in company_dict[company_id].keys():
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
-                                company_dict[company_id][project_id].get("mem", 0)
+                            # company -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id].keys():
+                                # print("DeBug184: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                print("DeBug186: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
                             else:
-                                company_dict[company_id][project_id] = {}
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
-                                company_dict[company_id][project_id].get("mem", 0)
+                                company_dict[company_id]["sum"] = dict()
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                print("DeBug191: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            if project_id in company_dict[company_id].keys():
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    # print("DeBug195: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                    print("DeBug197: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                    print("DeBug202: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                # 建立 project 所使用字典
+                                company_dict[company_id][project_id] = dict()
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug216: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                    print("DeBug218: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                    print("DeBug223: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                    company_dict[company_id][project_id][pod_name].get("mem")
                         else:
-                            company_dict[company_id] = {}
-                            company_dict[company_id][project_id] = {}
-                            company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
-                            company_dict[company_id][project_id].get("mem", 0)
+                            company_dict[company_id] = dict()
+                            company_dict[company_id]["sum"] = dict()
+                            company_dict[company_id][project_id] = dict()
+                            company_dict[company_id][project_id]["sum"] = dict()
+                            company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                            print("DeBug242: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            # company -> project -> sum (確保sum會在每隻project下的第1位)
+                            company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                            print("DeBug246: sum[company_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                            # company -> project -> 不同pod
+                            if pod_name in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('M', ''))*1000*1000
+                                company_dict[company_id][project_id][pod_name].get("mem")
 
                     regex = r"^\d+m$"
                     if re.match(regex, memusage):
-                        memsum = memsum + int(memusage.replace('000m', ''))
+                        # memsum = memsum + int(memusage.replace('000m', ''))
                         if company_id in company_dict.keys():
-                            if project_id in company_dict[company_id].keys():
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('000m', ''))
+                            # company -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id].keys():
+                                print("DeBug184: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('000m', ''))
+                                print("DeBug186: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
                             else:
-                                company_dict[company_id][project_id] = {}
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('000m', ''))
-                                company_dict[company_id][project_id].get("mem", 0)
+                                company_dict[company_id]["sum"] = dict()
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('000m', ''))
+                                print("DeBug191: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            if project_id in company_dict[company_id].keys():
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug195: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('000m', ''))
+                                    print("DeBug197: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('000m', ''))
+                                    print("DeBug202: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('000m', ''))
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('000m', ''))
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                # 建立 project 所使用字典
+                                company_dict[company_id][project_id] = dict()
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug216: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('000m', ''))
+                                    print("DeBug218: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('000m', ''))
+                                    print("DeBug223: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('000m', ''))
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('000m', ''))
+                                    company_dict[company_id][project_id][pod_name].get("mem")
                         else:
-                            company_dict[company_id] = {}
-                            company_dict[company_id][project_id] = {}
-                            company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('000m', ''))
-                            company_dict[company_id][project_id].get("mem", 0)
+                            company_dict[company_id] = dict()
+                            company_dict[company_id]["sum"] = dict()
+                            company_dict[company_id][project_id] = dict()
+                            company_dict[company_id][project_id]["sum"] = dict()
+                            company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('000m', ''))
+                            print("DeBug242: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            # company -> project -> sum (確保sum會在每隻project下的第1位)
+                            company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('000m', ''))
+                            print("DeBug246: sum[company_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                            # company -> project -> 不同pod
+                            if pod_name in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('000m', ''))
+                                company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('000m', ''))
+                                company_dict[company_id][project_id][pod_name].get("mem")
 
                     regex = r"^\d+Mi$"
                     if re.match(regex, memusage):
-                        memsum = memsum+int(memusage.replace('Mi', ''))*1024*1024
+                        # memsum = memsum + int(memusage.replace('Mi', ''))*1024*1024
                         if company_id in company_dict.keys():
-                            if project_id in company_dict[company_id].keys():
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
-                                company_dict[company_id][project_id].get("mem", 0)
+                            # company -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id].keys():
+                                # print("DeBug184: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                print("DeBug186: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
                             else:
-                                company_dict[company_id][project_id] = {}
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
-                                company_dict[company_id][project_id].get("mem", 0)
+                                company_dict[company_id]["sum"] = dict()
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                print("DeBug191: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            if project_id in company_dict[company_id].keys():
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    # print("DeBug195: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                    print("DeBug197: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                    print("DeBug202: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                # 建立 project 所使用字典
+                                company_dict[company_id][project_id] = dict()
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug216: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                    print("DeBug218: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                    print("DeBug223: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                    company_dict[company_id][project_id][pod_name].get("mem")
                         else:
-                            company_dict[company_id] = {}
-                            company_dict[company_id][project_id] = {}
-                            company_dict[company_id]["mem"] = company_dict[company_id].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
-                            company_dict[company_id].get("mem", 0)
+                            company_dict[company_id] = dict()
+                            company_dict[company_id]["sum"] = dict()
+                            company_dict[company_id][project_id] = dict()
+                            company_dict[company_id][project_id]["sum"] = dict()
+                            company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                            print("DeBug242: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            # company -> project -> sum (確保sum會在每隻project下的第1位)
+                            company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                            print("DeBug246: sum[company_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                            # company -> project -> 不同pod
+                            if pod_name in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Mi', ''))*1024*1024
+                                company_dict[company_id][project_id][pod_name].get("mem")
 
                     regex = r"^\d+Gi$"
                     if re.match(regex, memusage):
-                        memsum = memsum + int(memusage.replace('Gi', ''))*1024*1024*1024
+                        # memsum = memsum + int(memusage.replace('Gi', ''))*1024*1024*1024
                         if company_id in company_dict.keys():
-                            if project_id in company_dict[company_id].keys():
-                                company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
-                                company_dict[company_id][project_id].get("mem", 0)
+                            # company -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id].keys():
+                                # print("DeBug184: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                print("DeBug186: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
                             else:
-                                company_dict[company_id][project_id] = {}
-                                company_dict[company_id]["mem"] = company_dict[company_id].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
-                                company_dict[company_id].get("mem", 0)
+                                company_dict[company_id]["sum"] = dict()
+                                company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                print("DeBug191: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            if project_id in company_dict[company_id].keys():
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    # print("DeBug195: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                    print("DeBug197: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                    print("DeBug202: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name not in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                # 建立 project 所使用字典
+                                company_dict[company_id][project_id] = dict()
+                                # company -> project -> sum (確保sum會在每隻project下的第1位)
+                                if "sum" in company_dict[company_id][project_id].keys():
+                                    print("DeBug216: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                    print("DeBug218: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                else:
+                                    company_dict[company_id][project_id]["sum"] = dict()
+                                    company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                    print("DeBug223: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                # company -> project -> 不同pod
+                                if pod_name in company_dict[company_id][project_id].keys():
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                    company_dict[company_id][project_id][pod_name].get("mem")
+                                else:
+                                    company_dict[company_id][project_id][pod_name] = dict()
+                                    company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                    company_dict[company_id][project_id][pod_name].get("mem")
                         else:
-                            company_dict[company_id] = {}
-                            company_dict[company_id][project_id] = {}
-                            company_dict[company_id][project_id]["mem"] = company_dict[company_id][project_id].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
-                            company_dict[company_id][project_id].get("mem", 0)
+                            company_dict[company_id] = dict()
+                            company_dict[company_id]["sum"] = dict()
+                            company_dict[company_id][project_id] = dict()
+                            company_dict[company_id][project_id]["sum"] = dict()
+                            company_dict[company_id]["sum"]["mem"] = company_dict[company_id]["sum"].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                            print("DeBug242: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            # company -> project -> sum (確保sum會在每隻project下的第1位)
+                            company_dict[company_id][project_id]["sum"]["mem"] = company_dict[company_id][project_id]["sum"].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                            print("DeBug246: sum[company_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                            # company -> project -> 不同pod
+                            if pod_name in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                company_dict[company_id][project_id][pod_name].get("mem")
+                            else:
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["mem"] = company_dict[company_id][project_id][pod_name].get("mem", 0) + int(memusage.replace('Gi', ''))*1024*1024*1024
+                                company_dict[company_id][project_id][pod_name].get("mem")
 
                 if "nvidia.com/gpu" in pod.spec.containers[0].resources.requests:
                     company_id = pod.metadata.labels.get('company_id')
                     project_id = pod.metadata.labels.get('project_id')
-                    if not company_id:
-                        continue
-                    if not project_id:
-                        continue
 
                     gpuusage = pod.spec.containers[0].resources.requests.get('nvidia.com/gpu')
-                    gpusum = gpusum + int(gpuusage)
-
                     if company_id in company_dict.keys():
-                        if project_id in company_dict[company_id].keys():
-                            company_dict[company_id][project_id]["gpu"] = company_dict[company_id][project_id].get("gpu", 0) + int(gpuusage)
-                            company_dict[company_id][project_id].get("gpu", 0)
+                        # company -> sum (確保sum會在每隻project下的第1位)
+                        if "sum" in company_dict[company_id].keys():
+                            # print("DeBug184: sum[company_id] B4 summay -> " + str(company_dict[company_id]["sum"]["mem"]))
+                            company_dict[company_id]["sum"]["gpu"] = company_dict[company_id]["sum"].get("gpu", 0) + int(gpuusage)
+                            print("DeBug186: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["gpu"]))
                         else:
-                            company_dict[company_id][project_id] = {}
-                            company_dict[company_id][project_id]["gpu"] = company_dict[company_id][project_id].get("gpu", 0) + int(gpuusage)
-                            company_dict[company_id][project_id].get("gpu", 0)
+                            company_dict[company_id]["sum"] = dict()
+                            company_dict[company_id]["sum"]["gpu"] = company_dict[company_id]["sum"].get("gpu", 0) + int(gpuusage)
+                            print("DeBug191: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["gpu"]))
+                        if project_id in company_dict[company_id].keys():
+                            # company -> project -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id][project_id].keys():
+                                # print("DeBug195: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["mem"]))
+                                company_dict[company_id][project_id]["sum"]["gpu"] = company_dict[company_id][project_id]["sum"].get("gpu", 0) + int(gpuusage)
+                                print("DeBug197: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["gpu"]))
+                            else:
+                                company_dict[company_id][project_id]["sum"] = dict()
+                                company_dict[company_id][project_id]["sum"]["gpu"] = company_dict[company_id][project_id]["sum"].get("gpu", 0) + int(gpuusage)
+                                print("DeBug202: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["gpu"]))
+                            # company -> project -> 不同pod
+                            if pod_name not in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["gpu"] = company_dict[company_id][project_id][pod_name].get("gpu", 0) + int(gpuusage)
+                                company_dict[company_id][project_id][pod_name].get("gpu")
+                            else:
+                                company_dict[company_id][project_id][pod_name]["gpu"] = company_dict[company_id][project_id][pod_name].get("gpu", 0) + int(gpuusage)
+                                company_dict[company_id][project_id][pod_name].get("gpu")
+                        else:
+                            # 建立 project 所使用字典
+                            company_dict[company_id][project_id] = dict()
+                            # company -> project -> sum (確保sum會在每隻project下的第1位)
+                            if "sum" in company_dict[company_id][project_id].keys():
+                                print("DeBug216: sum[company_id][project_id] B4 summay -> " + str(company_dict[company_id][project_id]["sum"]["gpu"]))
+                                company_dict[company_id][project_id]["sum"]["gpu"] = company_dict[company_id][project_id]["sum"].get("gpu", 0) + int(gpuusage)
+                                print("DeBug218: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["gpu"]))
+                            else:
+                                company_dict[company_id][project_id]["sum"] = dict()
+                                company_dict[company_id][project_id]["sum"]["gpu"] = company_dict[company_id][project_id]["sum"].get("gpu", 0) + int(gpuusage)
+                                print("DeBug223: sum[company_id][project_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["gpu"]))
+                            # company -> project -> 不同pod
+                            if pod_name in company_dict[company_id][project_id].keys():
+                                company_dict[company_id][project_id][pod_name]["gpu"] = company_dict[company_id][project_id][pod_name].get("gpu", 0) + int(gpuusage)
+                                company_dict[company_id][project_id][pod_name].get("gpu")
+                            else:
+                                company_dict[company_id][project_id][pod_name] = dict()
+                                company_dict[company_id][project_id][pod_name]["gpu"] = company_dict[company_id][project_id][pod_name].get("gpu", 0) + int(gpuusage)
+                                company_dict[company_id][project_id][pod_name].get("gpu")
                     else:
-                        company_dict[company_id] = {}
-                        company_dict[company_id][project_id] = {}
-                        company_dict[company_id][project_id]["gpu"] = company_dict[company_id][project_id].get("gpu", 0) + int(gpuusage)
-                        company_dict[company_id][project_id].get("gpu", 0)
+                        company_dict[company_id] = dict()
+                        company_dict[company_id]["sum"] = dict()
+                        company_dict[company_id][project_id] = dict()
+                        company_dict[company_id][project_id]["sum"] = dict()
+                        company_dict[company_id]["sum"]["gpu"] = company_dict[company_id]["sum"].get("gpu", 0) + int(gpuusage)
+                        print("DeBug242: sum[company_id] AFT summay -> " + str(company_dict[company_id]["sum"]["gpu"]))
+                        company_dict[company_id][project_id]["sum"]["gpu"] = company_dict[company_id][project_id]["sum"].get("gpu", 0) + int(gpuusage)
+                        print("DeBug246: sum[company_id] AFT summay -> " + str(company_dict[company_id][project_id]["sum"]["gpu"]))
+                        # company -> project -> 不同pod
+                        if pod_name in company_dict[company_id][project_id].keys():
+                            company_dict[company_id][project_id][pod_name]["gpu"] = company_dict[company_id][project_id][pod_name].get("gpu", 0) + int(gpuusage)
+                            company_dict[company_id][project_id][pod_name].get("gpu")
+                        else:
+                            company_dict[company_id][project_id][pod_name] = dict()
+                            company_dict[company_id][project_id][pod_name]["gpu"] = company_dict[company_id][project_id][pod_name].get("gpu", 0) + int(gpuusage)
+                            company_dict[company_id][project_id][pod_name].get("gpu")
                 print("<RAW Dict>")
-                print(str(company_dict) + "\n")
-
-    print("<<< Summary >>>")
-    print("CPU usage in m: " + str(cpusum) + "m")
-    print("CPU usage in number: " + str(cpusum/1000) + "\n")
-
-    print("Memory usage in byte: " + str(memsum))
-    print("Memory usage in GiB: " + str(memsum/1024/1024/1024) + "\n")
-
-    print("GPU usage in number: " + str(gpusum) + "\n")
-
-    print("<Companies>")
-    print(str(company_dict.keys()) + "\n")
-
-    print("<Detailed Usages>")
-    for companies in company_dict.keys():
-
-        cpu_in_cpn = 0
-        mem_in_cpn = 0
-        gpu_in_cpn = 0
-
-        print("Company: " + companies)
-        print(">RAW: " + str(company_dict[companies]) + "\n")
-
-        for projects in company_dict[companies].keys():
-            print(">> Company: " + companies + " Project: " + projects)
-            cpu_in_cpn = company_dict[companies][projects].get("cpu", 0) + cpu_in_cpn
-            mem_in_cpn = company_dict[companies][projects].get("mem", 0) + mem_in_cpn
-            gpu_in_cpn = company_dict[companies][projects].get("gpu", 0) + gpu_in_cpn
-            cpu_in_prj = company_dict[companies][projects].get("cpu", 0)
-            mem_in_prj = company_dict[companies][projects].get("mem", 0)
-            gpu_in_prj = company_dict[companies][projects].get("gpu", 0)
-            print("CPU: " + str(cpu_in_prj) + "m MEM: " + str(mem_in_prj) + "(byte) GPU: " + str(gpu_in_prj))
-        print(">>>Overall CPU: " + str(cpu_in_cpn) + "m MEM: " + str(mem_in_cpn) + "(byte) GPU: " + str(gpu_in_cpn) + "\n\n")
-    print("<Raw Dict>")
-    print(str(company_dict) + "\n")
+                print(str(json.dumps(company_dict, indent=4)) + "\n")
 
 while True:
 
