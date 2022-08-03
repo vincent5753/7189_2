@@ -131,10 +131,10 @@ def get_pod_statistics():
                                 company_dict[company_id][project_id] = dict()
                                 # company -> project -> sum (確保sum會在每隻project下的第1位)
                                 if "sum" in company_dict[company_id][project_id].keys():
-                                    company_dict[company_id][project_id]["sum"] = company_dict[company_id][project_id].get("sum", 0) + int(cpuusage)*1000
+                                    company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage)*1000
                                 else:
                                     company_dict[company_id][project_id]["sum"] = dict()
-                                    company_dict[company_id][project_id]["sum"] = company_dict[company_id][project_id].get("sum", 0) + int(cpuusage)*1000
+                                    company_dict[company_id][project_id]["sum"]["cpu"] = company_dict[company_id][project_id]["sum"].get("cpu", 0) + int(cpuusage)*1000
                                 # company -> project -> 不同pod
                                 # 因為CPU通常是最先需要處理的，所以優先判斷不存在，所以以not為優先判斷
                                 if pod_name not in company_dict[company_id][project_id].keys():
