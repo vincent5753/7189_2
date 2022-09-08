@@ -1,7 +1,7 @@
-subject=$(cat 1mail.txt | grep "Subject: " | awk -F "Subject: " '{print $2}')
+subject=$(cat ~/1mail.txt | grep "Subject: " | awk -F "Subject: " '{print $2}')
 echo 標題: \"$subject\"
 
-boundary=$(cat 1mail.txt | grep "boundary=" | awk -F '"' '{print $2}')
+boundary=$(cat ~/1mail.txt | grep "boundary=" | awk -F '"' '{print $2}')
 echo 邊界: \"$boundary\"
 
 delimiter="--$boundary"
@@ -50,7 +50,7 @@ do
 
   fi
 
-done < 1mail.txt
+done < ~/1mail.txt
 
 context=$(cat tmp)
 
