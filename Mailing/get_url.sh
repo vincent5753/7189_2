@@ -20,7 +20,16 @@ do
   fi
   if (( 2 > $count && $count > 0 ))
   then
-#    echo $line
+
+    if [[ $line == Link\ to\ e-mail\ address\ verification\<http* ]]
+    then
+      echo "開頭↓"
+      partofurl=$(echo $line | sed 's/^Link to e-mail address verification<//g' | awk -F "=" '{NF--; print}' | sed 's/ /=/g')
+      echo $partofurl
+      echo -n $partofurl > tmp
+      urlhead=1
+      continue
+    fi
 
     if [[ $line == \<http* ]]
     then
