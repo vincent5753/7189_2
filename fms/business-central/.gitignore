@@ -1,0 +1,21 @@
+/target
+/local
+
+# pid of containers
+/*.pid
+
+# Eclipse, Netbeans and IntelliJ files
+/.*
+!.gitignore
+!.gitattributes
+/nbproject
+/*.ipr
+/*.iws
+/*.iml
+
+# Repository wide ignore mac DS_Store files
+.DS_Store
+
+# repository for Jenkinsfiles
+!.ci
+!.ci/jenkins

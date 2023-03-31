@@ -1,0 +1,19 @@
+{
+    "lookup": null,
+    "command" : [ {
+        "insert":{
+            "object": [{
+                "com.test.poc_test.POC2_1":{
+                    "ap_price_percent":0.9,
+                    "ap_price":4000,
+                    "mp_max_price":500,
+                    "level":"三級"
+                }
+            }],
+            "out-identifier": "POC2_1",
+            "return-object" : true
+        }
+    },{
+        "fire-all-rules": {}
+    }]
+}
