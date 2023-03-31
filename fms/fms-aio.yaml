@@ -1,0 +1,147 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fms
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fms-bc-deployment
+  namespace: fms
+spec:
+  selector:
+    matchLabels:
+      app: business-central
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: business-central
+    spec:
+      containers:
+      - name: fms-bc
+        image: kiegroup/business-central-workbench-showcase:7.71.0.Final
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        - containerPort: 8001
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /opt/jboss/.m2/
+          name: m2
+      volumes:
+      - name: m2
+        hostPath:
+          path: /home/vp/fms-m2
+          type: Directory
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: fms-bc-svc-clusterip
+  namespace: fms
+  labels:
+    app: business-central
+spec:
+  selector:
+    app: business-central
+  ports:
+    - name: apisvc
+      protocol: TCP
+      port: 8001
+      targetPort: 8001
+  clusterIP: None
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: fms-bc-svc-nodeport
+  namespace: fms
+  labels:
+    app: business-central
+spec:
+  selector:
+    app: business-central
+  type: NodePort
+  ports:
+    - name: webui
+      protocol: TCP
+      port: 8080
+      nodePort: 30080
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fms-kie-server-deployment
+  namespace: fms
+spec:
+  selector:
+    matchLabels:
+      app: fms-kie-server
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: fms-kie-server
+    spec:
+      containers:
+      - name: fms-bc
+        image: kiegroup/kie-server-showcase:7.71.0.Final
+        imagePullPolicy: IfNotPresent
+        args: [bash, -c, 'sed -i "s/replacethis2podip/$POD_IP/g" /opt/jboss/wildfly/standalone/configuration/standalone-full-kie-server.xml ; bash /opt/jboss/wildfly/bin/start_kie-server.sh']
+        ports:
+        - containerPort: 8080
+        securityContext:
+          privileged: true
+        env:
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+        volumeMounts:
+        - mountPath: /opt/jboss/.m2/
+          name: m2
+      volumes:
+      - name: m2
+        hostPath:
+          path: /home/vp/fms-m2
+          type: Directory
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+ name: fms-kie-svc-nodeport
+ namespace: fms
+ labels:
+   app: fms-kie-server
+spec:
+ selector:
+   app: fms-kie-server
+ type: NodePort
+ ports:
+   - name: api
+     protocol: TCP
+     port: 8080
+     nodePort: 30800
+
+#apiVersion: v1
+#kind: Pod
+#metadata:
+#  name: fms-vptestenv
+#  namespace: fms
+#spec:
+#  containers:
+#    - name: fms-vptestenv
+#      image: vincent5753/ubuntu20.04
+#      imagePullPolicy: IfNotPresent
+#      args: [bash, -c, 'for ((i = 0; ; i++)); do echo "$i: $(date)"; sleep 99999; done']
