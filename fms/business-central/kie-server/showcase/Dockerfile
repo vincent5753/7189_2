@@ -36,7 +36,6 @@ chown jboss:jboss $JBOSS_HOME/standalone/configuration/kie-server-users.properti
 chown jboss:jboss $JBOSS_HOME/standalone/configuration/kie-server-roles.properties && \
 chown jboss:jboss $JBOSS_HOME/bin/start_kie-server.sh && \
 chown jboss:jboss $JBOSS_HOME/../.m2/settings.xml
-RUN yum install -y net-tools tcpdump openssh-client
 # RUN yum install -y maven
 ####### JBOSS USER ############
 # Switchback to jboss user
