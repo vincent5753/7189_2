@@ -1,7 +1,7 @@
 #!/bin/bash
 # By VP@23.08.02
 
-for file in /tmp/itri-jar/*.jar
+for file in /tmp/jar/*.jar
 do
   echo $file
   filename=$(echo "$file" | awk -F "/" '{print $NF}')
